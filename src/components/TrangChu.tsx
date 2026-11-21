@@ -21,9 +21,7 @@ export default function TrangChu() {
           <span className="text-blue-600">trang quản lý DNC</span>
         </h1>
 
-        <p className="mt-4 max-w-lg text-base text-slate-500 sm:text-lg">
-          Quản lý mã hàng, cảnh báo và dữ liệu gửi xuống FANUC / PLC ngay trên trình duyệt.
-        </p>
+        
 
         {/* Animation: 2 bánh răng quay ngược chiều nhau */}
         <div aria-hidden="true" className="mt-12 flex items-end">

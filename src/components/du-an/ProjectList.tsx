@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { connection } from "next/server";
 import { getProjects, type Project } from "@/lib/projects";
+import { formatDate } from "@/lib/dnc-format";
 
 // ====================================================
 // DANH SÁCH DỰ ÁN (Server Component)
@@ -54,23 +56,31 @@ export default async function ProjectList() {
               <th className="px-4 py-3 text-right font-semibold">Mã hàng</th>
               <th className="px-4 py-3 font-semibold">Máy cập nhật</th>
               <th className="px-4 py-3 font-semibold">Cập nhật lúc</th>
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {projects.map((p) => (
-              <tr key={p.id} className="hover:bg-slate-50">
+              <tr key={p.id} className="group hover:bg-blue-50/40">
                 <td className="px-4 py-3">
-                  <span className="rounded-md bg-blue-50 px-2 py-1 font-mono text-xs font-semibold text-blue-700">
+                  <Link href={detailHref(p.projectCode)} className="rounded-md bg-blue-50 px-2 py-1 font-mono text-xs font-semibold text-blue-700 hover:bg-blue-100">
                     {p.projectCode}
-                  </span>
+                  </Link>
                 </td>
-                <td className="px-4 py-3 font-medium text-slate-800">{p.projectName || "—"}</td>
+                <td className="px-4 py-3 font-medium text-slate-800">
+                  <Link href={detailHref(p.projectCode)} className="hover:text-blue-700 hover:underline">{p.projectName || "—"}</Link>
+                </td>
                 <td className="max-w-xs truncate px-4 py-3 text-slate-500" title={p.description}>
                   {p.description || "—"}
                 </td>
                 <td className="px-4 py-3 text-right font-semibold text-slate-700">{p.recipeCount}</td>
                 <td className="px-4 py-3 text-slate-500">{p.updatedByMachine || "—"}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-slate-500">{formatDate(p.updatedAt)}</td>
+                <td className="px-4 py-3 text-right">
+                  <Link href={detailHref(p.projectCode)} className="text-sm font-medium whitespace-nowrap text-blue-600 hover:underline">
+                    Xem mã hàng →
+                  </Link>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -89,7 +99,7 @@ export default async function ProjectList() {
 
 function ProjectCard({ project: p }: { project: Project }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+    <Link href={detailHref(p.projectCode)} className="block rounded-xl border border-slate-200 bg-white p-4 active:bg-slate-50">
       <div className="flex items-start justify-between gap-3">
         <div>
           <span className="rounded-md bg-blue-50 px-2 py-1 font-mono text-xs font-semibold text-blue-700">{p.projectCode}</span>
@@ -105,8 +115,13 @@ function ProjectCard({ project: p }: { project: Project }) {
         Cập nhật {formatDate(p.updatedAt)}
         {p.updatedByMachine && ` • máy ${p.updatedByMachine}`}
       </p>
-    </div>
+    </Link>
   );
+}
+
+/** Đường dẫn trang chi tiết dự án */
+function detailHref(projectCode: string): string {
+  return `/quan-ly-du-an/${encodeURIComponent(projectCode)}`;
 }
 
 function Stat({ label, value }: { label: string; value: number }) {
@@ -116,11 +131,4 @@ function Stat({ label, value }: { label: string; value: number }) {
       <p className="mt-1 text-2xl font-bold text-slate-800">{value}</p>
     </div>
   );
-}
-
-/** "2026-10-23 09:15:02" -> "23/10/2026 09:15" */
-function formatDate(value: string | null): string {
-  if (!value) return "—";
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(value);
-  return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : value;
 }

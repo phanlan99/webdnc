@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 
 // ====================================================
 // SIDEBAR - menu bên trái, nền sáng, hỗ trợ mobile
@@ -25,12 +25,7 @@ const MENU_ITEMS: MenuItem[] = [
 ];
 
 export default function Sidebar() {
-  const pathname = usePathname();
   const [open, setOpen] = useState(false); // menu đang mở trên mobile
-
-  // "/" chỉ sáng khi đúng trang chủ; các mục khác sáng cả ở trang con (VD: /cai-dat/abc)
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
 
   // Khi menu mở trên mobile: khóa cuộn trang, bấm Esc để đóng, phóng to sang màn hình lớn thì tự đóng
   useEffect(() => {
@@ -98,32 +93,50 @@ export default function Sidebar() {
           </button>
         </div>
 
-        {/* Danh mục */}
+        {/* Danh mục - phần đọc đường dẫn (usePathname) đặt trong Suspense để dùng được ở cả trang động như /quan-ly-du-an/[mã] */}
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
-          {MENU_ITEMS.map((item) => {
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setOpen(false)} // chọn mục xong thì đóng menu (mobile)
-                aria-current={active ? "page" : undefined}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  active
-                    ? "bg-blue-50 text-blue-700"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
-              >
-                <span className={active ? "text-blue-600" : "text-slate-400"}>{item.icon}</span>
-                {item.label}
-              </Link>
-            );
-          })}
+          <Suspense fallback={<MenuList pathname={null} onNavigate={() => setOpen(false)} />}>
+            <MenuLinks onNavigate={() => setOpen(false)} />
+          </Suspense>
         </nav>
 
         {/* Chân sidebar */}
         <div className="border-t border-slate-200 px-6 py-4 text-xs text-slate-400">WEB DNC © 2026</div>
       </aside>
+    </>
+  );
+}
+
+/** Đọc đường dẫn hiện tại để tô sáng mục đang mở. */
+function MenuLinks({ onNavigate }: { onNavigate: () => void }) {
+  const pathname = usePathname();
+  return <MenuList pathname={pathname} onNavigate={onNavigate} />;
+}
+
+function MenuList({ pathname, onNavigate }: { pathname: string | null; onNavigate: () => void }) {
+  // "/" chỉ sáng khi đúng trang chủ; các mục khác sáng cả ở trang con (VD: /quan-ly-du-an/REMAINBAR)
+  const isActive = (href: string) =>
+    pathname !== null && (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/"));
+
+  return (
+    <>
+      {MENU_ITEMS.map((item) => {
+        const active = isActive(item.href);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate} // chọn mục xong thì đóng menu (mobile)
+            aria-current={active ? "page" : undefined}
+            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+              active ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <span className={active ? "text-blue-600" : "text-slate-400"}>{item.icon}</span>
+            {item.label}
+          </Link>
+        );
+      })}
     </>
   );
 }

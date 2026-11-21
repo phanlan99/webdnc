@@ -1,5 +1,5 @@
 import "server-only";
-import { query } from "@/lib/db";
+import { describeDbError, query } from "@/lib/db";
 
 // ====================================================
 // DỮ LIỆU DỰ ÁN - bảng dnc_project (tạo bởi app C# DNC)
@@ -59,24 +59,5 @@ export async function getProjects(): Promise<ProjectsResult> {
     };
   } catch (err) {
     return { ok: false, error: describeDbError(err) };
-  }
-}
-
-/** Đổi lỗi MySQL thường gặp thành lời nhắn dễ hiểu. */
-function describeDbError(err: unknown): string {
-  const e = err as { code?: string; message?: string };
-  switch (e.code) {
-    case "ECONNREFUSED":
-    case "ETIMEDOUT":
-    case "EHOSTUNREACH":
-      return `Không kết nối được máy chủ MySQL (${process.env.DNC_DB_HOST ?? "chưa cấu hình"}:${process.env.DNC_DB_PORT ?? "3306"}). Kiểm tra IP, Port, tường lửa và file .env.local.`;
-    case "ER_ACCESS_DENIED_ERROR":
-      return "Sai tài khoản hoặc mật khẩu MySQL. Kiểm tra DNC_DB_USER / DNC_DB_PASSWORD trong .env.local.";
-    case "ER_BAD_DB_ERROR":
-      return `Không tìm thấy database "${process.env.DNC_DB_NAME ?? "DncControl"}". Kiểm tra DNC_DB_NAME trong .env.local.`;
-    case "ER_NO_SUCH_TABLE":
-      return "Database chưa có bảng dnc_project / dnc_recipe. Hãy mở app C# DNC kết nối Database một lần để tự tạo bảng.";
-    default:
-      return e.message ?? String(err);
   }
 }

@@ -36,3 +36,22 @@ export async function query<T>(sql: string, params: unknown[] = []): Promise<T[]
   const [rows] = await getDb().query(sql, params);
   return rows as T[];
 }
+
+/** Đổi lỗi MySQL thường gặp thành lời nhắn dễ hiểu (dùng chung cho mọi truy vấn). */
+export function describeDbError(err: unknown): string {
+  const e = err as { code?: string; message?: string };
+  switch (e.code) {
+    case "ECONNREFUSED":
+    case "ETIMEDOUT":
+    case "EHOSTUNREACH":
+      return `Không kết nối được máy chủ MySQL (${process.env.DNC_DB_HOST ?? "chưa cấu hình"}:${process.env.DNC_DB_PORT ?? "3306"}). Kiểm tra IP, Port, tường lửa và file .env.local.`;
+    case "ER_ACCESS_DENIED_ERROR":
+      return "Sai tài khoản hoặc mật khẩu MySQL. Kiểm tra DNC_DB_USER / DNC_DB_PASSWORD trong .env.local (mật khẩu nên đặt trong dấu nháy kép).";
+    case "ER_BAD_DB_ERROR":
+      return `Không tìm thấy database "${process.env.DNC_DB_NAME ?? "DncControl"}". Kiểm tra DNC_DB_NAME trong .env.local.`;
+    case "ER_NO_SUCH_TABLE":
+      return "Database chưa có đủ bảng dữ liệu DNC. Hãy mở app C# DNC kết nối Database một lần để tự tạo bảng.";
+    default:
+      return e.message ?? String(err);
+  }
+}

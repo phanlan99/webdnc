@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { getProjectDetail } from "@/lib/recipes";
 import { getProjectTargets } from "@/lib/recipe-write";
 import { formatDate } from "@/lib/dnc-format";
-import ConditionTable from "./ConditionTable";
+import GlobalConditionSection from "./GlobalConditionSection";
 import RecipeBrowser from "./RecipeBrowser";
 
 // ====================================================
@@ -55,14 +55,8 @@ export default async function ProjectDetail({ params }: { params: Promise<{ proj
         <Stat label="Điều kiện chung" value={p.globalConditions.length} />
       </div>
 
-      {/* Điều kiện chung */}
-      <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5">
-        <h2 className="text-lg font-semibold text-slate-800">Điều kiện chung</h2>
-        <p className="mb-3 text-sm text-slate-500">
-          Áp dụng cho mọi mã hàng có bật &quot;Dùng điều kiện chung&quot; — phải đạt hết thì mới gửi dữ liệu.
-        </p>
-        <ConditionTable conditions={p.globalConditions} showMachine />
-      </section>
+      {/* Điều kiện chung - xem / thêm / sửa / xóa */}
+      <GlobalConditionSection projectCode={p.projectCode} conditions={p.globalConditions} targets={targets} canEdit={canEdit} />
 
       {/* Mã hàng */}
       <section>

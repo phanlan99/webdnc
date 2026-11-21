@@ -1,7 +1,7 @@
 import "server-only";
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getDb, query } from "@/lib/db";
-import { BASE_TARGETS, SOURCE_FIXED, normalizeAddress, type RecipeInput } from "@/lib/recipe-rules";
+import { BASE_TARGETS, SOURCE_FIXED, normalizeAddress, type ConditionInput, type GlobalConditionInput, type RecipeInput } from "@/lib/recipe-rules";
 
 // ====================================================
 // GHI DỮ LIỆU MÃ HÀNG VÀO DATABASE (thêm / sửa / xóa) - chỉ chạy trên server
@@ -10,17 +10,36 @@ import { BASE_TARGETS, SOURCE_FIXED, normalizeAddress, type RecipeInput } from "
 
 const WEB_MACHINE = "WEB"; // ghi vào updated_by_machine để biết thay đổi đến từ website
 
-/** Các thiết bị dự án đang có: MACRO, PMC, PLC (PLC1) + PLC mở rộng trong dnc_plc_device. */
+/**
+ * Các thiết bị dự án đang có: MACRO, PMC, PLC (PLC1)
+ * + PLC mở rộng trong dnc_plc_device (app C# lưu cấu hình kết nối ở Database)
+ * + PLC mở rộng đang được mã hàng / điều kiện của dự án sử dụng (app C# lưu danh sách PLC ở file txt).
+ */
 export async function getProjectTargets(projectCode: string): Promise<string[]> {
+  const extra = new Set<string>();
   try {
     const rows = await query<{ plc_code: string }>(
       "SELECT plc_code FROM dnc_plc_device WHERE project_code = ? ORDER BY sort_order, plc_code",
       [projectCode]
     );
-    return [...BASE_TARGETS, ...rows.map((r) => `PLC:${r.plc_code.toUpperCase()}`)];
+    rows.forEach((r) => extra.add(`PLC:${r.plc_code.toUpperCase()}`));
   } catch {
-    return [...BASE_TARGETS]; // chưa có bảng PLC mở rộng
+    // chưa có bảng PLC mở rộng
   }
+  try {
+    const used = await query<{ t: string }>(
+      `SELECT DISTINCT UPPER(p.target_kind) AS t FROM dnc_recipe_param p JOIN dnc_recipe r ON r.id = p.recipe_id WHERE r.project_code = ? AND p.target_kind LIKE 'PLC:%'
+       UNION SELECT DISTINCT UPPER(p.source_kind) FROM dnc_recipe_param p JOIN dnc_recipe r ON r.id = p.recipe_id WHERE r.project_code = ? AND p.source_kind LIKE 'PLC:%'
+       UNION SELECT DISTINCT UPPER(c.target_kind) FROM dnc_recipe_condition c JOIN dnc_recipe r ON r.id = c.recipe_id WHERE r.project_code = ? AND c.target_kind LIKE 'PLC:%'
+       UNION SELECT DISTINCT UPPER(target_kind) FROM dnc_global_condition WHERE project_code = ? AND target_kind LIKE 'PLC:%'`,
+      [projectCode, projectCode, projectCode, projectCode]
+    );
+    used.forEach((u) => extra.add(u.t));
+  } catch {
+    // bỏ qua
+  }
+  const sorted = [...extra].sort((a, b) => Number(a.slice(7)) - Number(b.slice(7)));   // PLC:PLC2, PLC:PLC3, ... PLC:PLC10
+  return [...BASE_TARGETS, ...sorted];
 }
 
 async function inTransaction<T>(work: (conn: PoolConnection) => Promise<T>): Promise<T> {
@@ -103,5 +122,47 @@ export async function deleteRecipe(projectCode: string, recipeId: number): Promi
     const [res] = await conn.execute<ResultSetHeader>("DELETE FROM dnc_recipe WHERE id = ? AND project_code = ?", [recipeId, projectCode]);
     if (res.affectedRows > 0) await touchProject(conn, projectCode);
     return res.affectedRows > 0;
+  });
+}
+
+/**
+ * NHẬP CSV: thay TOÀN BỘ mã hàng của dự án bằng danh sách mới (1 transaction - lỗi thì giữ nguyên dữ liệu cũ).
+ * globals = null: giữ nguyên điều kiện chung; có giá trị: thay luôn điều kiện chung.
+ */
+export async function replaceProjectRecipes(projectCode: string, recipes: RecipeInput[], globals: ConditionInput[] | null): Promise<void> {
+  await inTransaction(async (conn) => {
+    await conn.execute("DELETE FROM dnc_recipe WHERE project_code = ?", [projectCode]); // CASCADE: tham số + điều kiện riêng
+    for (const r of recipes) {
+      const [res] = await conn.execute<ResultSetHeader>(
+        "INSERT INTO dnc_recipe (project_code, machine_code, mahang, description, use_global_conditions) VALUES (?, '', ?, ?, ?)",
+        [projectCode, r.mahang.trim(), (r.description ?? "").trim(), r.useGlobalConditions ? 1 : 0]
+      );
+      await insertChildren(conn, res.insertId, r);
+    }
+
+    if (globals) await writeGlobals(conn, projectCode, globals.map((g) => ({ ...g, machine: "" })));
+    await touchProject(conn, projectCode);
+  });
+}
+
+// ---------------- ĐIỀU KIỆN CHUNG ----------------
+/** Xóa hết rồi ghi lại điều kiện chung của dự án (dùng bên trong transaction). */
+async function writeGlobals(conn: PoolConnection, projectCode: string, list: GlobalConditionInput[]) {
+  await conn.execute("DELETE FROM dnc_global_condition WHERE project_code = ?", [projectCode]);
+  for (const [i, c] of list.entries()) {
+    await conn.execute(
+      `INSERT INTO dnc_global_condition (project_code, machine_code, sort_order, enabled, target_kind, address, data_type, compare_op, compare_value, str_length, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [projectCode, (c.machine ?? "").trim(), i, c.enabled ? 1 : 0, c.target, normalizeAddress(c.target, c.address), c.dataType,
+       c.operator, c.value ?? "", c.length, (c.note ?? "").trim()]
+    );
+  }
+}
+
+/** Thay toàn bộ điều kiện chung của dự án (thêm / sửa / xóa / đổi thứ tự đều lưu bằng hàm này). */
+export async function replaceGlobalConditions(projectCode: string, list: GlobalConditionInput[]): Promise<void> {
+  await inTransaction(async (conn) => {
+    await writeGlobals(conn, projectCode, list);
+    await touchProject(conn, projectCode);
   });
 }

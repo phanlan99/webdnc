@@ -186,3 +186,19 @@ export function validateRecipe(input: RecipeInput, allowedTargets: string[]): Re
 
   return errors;
 }
+
+// ---------------- ĐIỀU KIỆN CHUNG CỦA DỰ ÁN ----------------
+/** Điều kiện chung: như điều kiện riêng + "machine" (mã máy áp dụng; để trống = mọi máy). */
+export type GlobalConditionInput = ConditionInput & { machine: string };
+
+/** Kiểm tra danh sách điều kiện chung (dùng lại đúng quy tắc của điều kiện riêng). */
+export function validateGlobalConditions(list: GlobalConditionInput[], allowedTargets: string[]): RecipeError[] {
+  const errors = validateRecipe(
+    { mahang: "_", description: "", useGlobalConditions: true, conditions: list, params: [] },
+    allowedTargets
+  ).map((e) => ({ ...e, message: e.message.replace(/^Điều kiện (\d+)/, "Điều kiện chung $1") }));
+  list.forEach((c, i) => {
+    if ((c.machine ?? "").trim().length > 50) errors.push({ scope: "condition", index: i, message: `Điều kiện chung ${i + 1}: mã máy tối đa 50 ký tự` });
+  });
+  return errors;
+}

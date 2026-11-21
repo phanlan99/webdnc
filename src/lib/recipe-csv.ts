@@ -175,12 +175,19 @@ export type CsvImportResult = {
  * Không ném lỗi: mọi vấn đề trả về trong "issues".
  */
 export function readRecipesCsv(text: string, allowedTargets: string[]): CsvImportResult {
+  return readRecipesRows(parseCsv(text), allowedTargets);
+}
+
+/**
+ * Đọc bảng dữ liệu (dòng 1 là tiêu đề) thành mã hàng + kiểm tra.
+ * Dùng chung cho CSV và Excel (file Excel có cùng các cột với CSV).
+ */
+export function readRecipesRows(rows: string[][], allowedTargets: string[]): CsvImportResult {
   const issues: CsvIssue[] = [];
   const recipes = new Map<string, RecipeInput>(); // khóa: mã hàng viết hoa (Database không phân biệt hoa/thường)
   const globals: ConditionInput[] = [];
   const empty: CsvImportResult = { recipes: [], globalConditions: [], issues, stats: { recipes: 0, conditions: 0, params: 0, globals: 0 } };
 
-  const rows = parseCsv(text);
   if (rows.length === 0) {
     issues.push({ message: "File trống." });
     return empty;

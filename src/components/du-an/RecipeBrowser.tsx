@@ -7,7 +7,7 @@ import { deleteRecipeAction } from "@/app/quan-ly-du-an/[projectCode]/actions";
 import ConditionTable from "./ConditionTable";
 import ParamTable from "./ParamTable";
 import RecipeEditor from "./RecipeEditor";
-import CsvTools from "./CsvTools";
+import RecipeFileTools from "./RecipeFileTools";
 
 // ====================================================
 // DANH SÁCH MÃ HÀNG CỦA DỰ ÁN (chạy trên trình duyệt)
@@ -70,7 +70,7 @@ export default function RecipeBrowser({ projectCode, recipes, targets, canEdit }
           {k ? `${filtered.length} / ${recipes.length} mã hàng` : `${recipes.length} mã hàng`}
         </span>
         <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-          <CsvTools projectCode={projectCode} targets={targets} canEdit={canEdit} currentRecipeCount={recipes.length} onMessage={setMessage} />
+          <RecipeFileTools projectCode={projectCode} targets={targets} canEdit={canEdit} currentRecipeCount={recipes.length} onMessage={setMessage} />
           {canEdit && (
             <button
               type="button"

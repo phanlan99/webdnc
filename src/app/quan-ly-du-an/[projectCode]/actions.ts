@@ -5,7 +5,8 @@ import { describeDbError } from "@/lib/db";
 import { validateGlobalConditions, validateRecipe, type GlobalConditionInput, type RecipeError, type RecipeInput } from "@/lib/recipe-rules";
 import { createRecipe, deleteRecipe, getProjectTargets, replaceGlobalConditions, replaceProjectRecipes, updateRecipe } from "@/lib/recipe-write";
 import { getProjectDetail } from "@/lib/recipes";
-import { buildRecipesCsv, readRecipesCsv, type CsvIssue } from "@/lib/recipe-csv";
+import { buildRecipesCsv, readRecipesCsv, readRecipesRows, type CsvExportData, type CsvImportResult, type CsvIssue } from "@/lib/recipe-csv";
+import { buildRecipesWorkbook, readWorkbookRows } from "@/lib/recipe-excel";
 
 // ====================================================
 // SERVER ACTIONS: thêm / sửa / xóa mã hàng (thay cho thư mục api/)
@@ -81,24 +82,33 @@ export async function deleteRecipeAction(projectCode: string, recipeId: number):
 
 export type ExportCsvResult = { ok: true; fileName: string; csv: string } | { ok: false; message: string };
 
+/** Dữ liệu xuất (dùng chung cho CSV và Excel). */
+async function loadExportData(code: string): Promise<{ ok: true; data: CsvExportData } | { ok: false; message: string }> {
+  const result = await getProjectDetail(code);
+  if (!result.ok) return { ok: false, message: result.notFound ? `Không tìm thấy dự án ${code}.` : result.error };
+  const p = result.project;
+  return {
+    ok: true,
+    data: {
+      globalConditions: p.globalConditions,
+      recipes: p.recipes.map((r) => ({
+        mahang: r.mahang, description: r.description, useGlobalConditions: r.useGlobalConditions,
+        conditions: r.conditions,
+        params: r.params.map((x) => ({ ...x, source: (x.source || "FIXED").toUpperCase() })),
+      })),
+    },
+  };
+}
+
+const fileStamp = () => new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
+
 /** Xuất toàn bộ mã hàng + điều kiện chung của dự án ra nội dung CSV (trình duyệt tự tải file về). */
 export async function exportRecipesCsvAction(projectCode: string): Promise<ExportCsvResult> {
   const code = cleanProjectCode(projectCode);
   if (!code) return { ok: false, message: "Mã dự án không hợp lệ." };
-  const result = await getProjectDetail(code);
-  if (!result.ok) return { ok: false, message: result.notFound ? `Không tìm thấy dự án ${code}.` : result.error };
-
-  const p = result.project;
-  const csv = buildRecipesCsv({
-    globalConditions: p.globalConditions,
-    recipes: p.recipes.map((r) => ({
-      mahang: r.mahang, description: r.description, useGlobalConditions: r.useGlobalConditions,
-      conditions: r.conditions,
-      params: r.params.map((x) => ({ ...x, source: (x.source || "FIXED").toUpperCase() })),
-    })),
-  });
-  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
-  return { ok: true, fileName: `mahang_${code}_${stamp}.csv`, csv };
+  const loaded = await loadExportData(code);
+  if (!loaded.ok) return loaded;
+  return { ok: true, fileName: `mahang_${code}_${fileStamp()}.csv`, csv: buildRecipesCsv(loaded.data) };
 }
 
 export type ImportCsvResult =
@@ -162,4 +172,75 @@ export async function saveGlobalConditionsAction(projectCode: string, list: Glob
 
   refresh();
   return { ok: true };
+}
+
+// ====================================================
+// XUẤT / NHẬP EXCEL (.xlsx) - cùng cột với CSV, đọc / ghi trên server
+// File Excel truyền qua lại dạng base64 (Server Action chỉ nhận dữ liệu dạng chữ / số / đối tượng)
+// ====================================================
+
+export type ExportExcelResult = { ok: true; fileName: string; base64: string } | { ok: false; message: string };
+
+export async function exportRecipesExcelAction(projectCode: string): Promise<ExportExcelResult> {
+  const code = cleanProjectCode(projectCode);
+  if (!code) return { ok: false, message: "Mã dự án không hợp lệ." };
+  const loaded = await loadExportData(code);
+  if (!loaded.ok) return loaded;
+  try {
+    const buf = await buildRecipesWorkbook(loaded.data, code, await getProjectTargets(code));
+    return { ok: true, fileName: `mahang_${code}_${fileStamp()}.xlsx`, base64: buf.toString("base64") };
+  } catch (err) {
+    return { ok: false, message: "Không tạo được file Excel: " + (err instanceof Error ? err.message : String(err)) };
+  }
+}
+
+const MAX_EXCEL_BASE64 = 950_000; // Server Action mặc định nhận tối đa ~1 MB (file Excel khoảng 700 KB)
+
+/** Đọc file Excel (base64) thành dữ liệu mã hàng + kiểm tra. */
+async function readExcel(code: string, base64: string): Promise<{ ok: true; data: CsvImportResult } | { ok: false; message: string }> {
+  if (typeof base64 !== "string" || base64.length === 0) return { ok: false, message: "File trống." };
+  if (base64.length > MAX_EXCEL_BASE64) return { ok: false, message: "File Excel quá lớn (tối đa khoảng 700 KB)." };
+  const sheet = await readWorkbookRows(Buffer.from(base64, "base64"));
+  if (!sheet.ok) return sheet;
+  return { ok: true, data: readRecipesRows(sheet.rows, await getProjectTargets(code)) };
+}
+
+export type PreviewExcelResult =
+  | { ok: true; stats: CsvImportResult["stats"]; issues: CsvIssue[] }
+  | { ok: false; message: string };
+
+/** Xem trước file Excel: chỉ đọc & kiểm tra, KHÔNG ghi Database. */
+export async function previewRecipesExcelAction(projectCode: string, base64: string): Promise<PreviewExcelResult> {
+  const code = cleanProjectCode(projectCode);
+  if (!code) return { ok: false, message: "Mã dự án không hợp lệ." };
+  const r = await readExcel(code, base64);
+  if (!r.ok) return r;
+  return { ok: true, stats: r.data.stats, issues: r.data.issues };
+}
+
+/** Nhập file Excel: THAY TOÀN BỘ mã hàng của dự án (giống nhập CSV). */
+export async function importRecipesExcelAction(projectCode: string, base64: string, replaceGlobals: boolean): Promise<ImportCsvResult> {
+  if (!editAllowed()) return { ok: false, message: "Chức năng chỉnh sửa đang TẮT (DNC_WEB_ALLOW_EDIT trong .env.local)." };
+  const code = cleanProjectCode(projectCode);
+  if (!code) return { ok: false, message: "Mã dự án không hợp lệ." };
+
+  const r = await readExcel(code, base64);
+  if (!r.ok) return r;
+  const data = r.data;
+  if (data.issues.length > 0) return { ok: false, message: `File có ${data.issues.length} lỗi — chưa ghi gì vào Database.`, issues: data.issues };
+  if (data.recipes.length === 0) return { ok: false, message: "File không có mã hàng nào (dòng MAHANG)." };
+
+  try {
+    await replaceProjectRecipes(code, data.recipes, replaceGlobals ? data.globalConditions : null);
+  } catch (err) {
+    const e = err as { code?: string };
+    if (e.code === "ER_DUP_ENTRY") return { ok: false, message: "File có mã hàng trùng nhau (Database không phân biệt chữ hoa / thường)." };
+    return { ok: false, message: describeDbError(err) };
+  }
+
+  refresh();
+  return {
+    ok: true, recipes: data.stats.recipes, params: data.stats.params, conditions: data.stats.conditions,
+    globals: replaceGlobals ? data.stats.globals : null,
+  };
 }

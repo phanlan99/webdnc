@@ -107,11 +107,13 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
-// Bỏ dấu tiếng Việt + khoảng trắng để so tên cột / giá trị linh hoạt
+// Bỏ dấu tiếng Việt + khoảng trắng để so tên cột / giá trị linh hoạt (dùng lại ở file cảnh báo: csvKey)
 function key(s: string): string {
   return (s ?? "").replace(/đ/g, "d").replace(/Đ/g, "D").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[\s_\-]/g, "").toUpperCase();
 }
+
+export const csvKey = (s: string) => key(s);
 
 const ROW_TYPES: Record<string, string> = {
   MAHANG: ROW_RECIPE, RECIPE: ROW_RECIPE,
@@ -120,7 +122,7 @@ const ROW_TYPES: Record<string, string> = {
   DIEUKIENCHUNG: ROW_GLOBAL, GLOBAL: ROW_GLOBAL,
 };
 
-function toTarget(v: string): string {
+export function toTarget(v: string): string {
   const raw = (v ?? "").trim();
   const k = key(raw);
   if (k === "MACRO" || k === "FANUCMACRO") return "MACRO";
@@ -131,33 +133,33 @@ function toTarget(v: string): string {
   return raw.toUpperCase();
 }
 
-function toOperator(v: string): string {
+export function toOperator(v: string): string {
   const s = (v ?? "").trim().toUpperCase();
   const map: Record<string, string> = { "=": "EQ", "==": "EQ", "≠": "NE", "!=": "NE", "<>": "NE", ">": "GT", ">=": "GE", "≥": "GE", "<": "LT", "<=": "LE", "≤": "LE" };
   return map[s] ?? (OPERATORS.some((o) => o.code === s) ? s : s || "EQ");
 }
 
-function toBool(v: string, def: boolean): boolean {
+export function toBool(v: string, def: boolean): boolean {
   const k = key(v);
   if (k === "") return def;
   return ["1", "TRUE", "X", "YES", "Y", "CO", "BAT", "ON"].includes(k);
 }
 
-function toType(v: string): string {
+export function toType(v: string): string {
   const k = key(v);
   const types = ["Real", "Bit", "Byte", "Int16", "UInt16", "Int32", "UInt32", "Float", "String"];
   return types.find((t) => t.toUpperCase() === k) ?? (v ?? "").trim();
 }
 
 /** Số thập phân kiểu Việt Nam "12,5" -> "12.5" (chỉ với kiểu số). */
-function toValue(v: string, dataType: string): string {
+export function toValue(v: string, dataType: string): string {
   const s = v ?? "";
   if (dataType === "String") return s;
   const t = s.trim();
   return /^[-+]?\d+,\d+$/.test(t) ? t.replace(",", ".") : t;
 }
 
-function stripApostrophe(v: string): string {
+export function stripApostrophe(v: string): string {
   return (v ?? "").startsWith("'") ? v.slice(1) : v ?? "";
 }
 

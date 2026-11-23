@@ -9,6 +9,7 @@ import {
   importRecipesExcelAction,
   previewRecipesExcelAction,
 } from "@/app/quan-ly-du-an/[projectCode]/actions";
+import { arrayBufferToBase64, base64ToBlob, downloadBlob as download, readCsvText, XLSX_MIME } from "@/lib/browser-file";
 
 // ====================================================
 // XUẤT / NHẬP FILE MÃ HÀNG CỦA DỰ ÁN: EXCEL (.xlsx) và CSV
@@ -49,7 +50,7 @@ export default function RecipeFileTools({ projectCode, targets, canEdit, current
       if (kind === "xlsx") {
         const res = await exportRecipesExcelAction(projectCode);
         if (!res.ok) return onMessage({ ok: false, text: res.message });
-        download(base64ToBlob(res.base64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"), res.fileName);
+        download(base64ToBlob(res.base64, XLSX_MIME), res.fileName);
         onMessage({ ok: true, text: `Đã xuất ${res.fileName}.` });
       } else {
         const res = await exportRecipesCsvAction(projectCode);
@@ -213,40 +214,6 @@ export default function RecipeFileTools({ projectCode, targets, canEdit, current
       )}
     </>
   );
-}
-
-// ---------------- Tiện ích file ----------------
-function download(blob: Blob, fileName: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function base64ToBlob(base64: string, type: string): Blob {
-  const bin = atob(base64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new Blob([bytes], { type });
-}
-
-function arrayBufferToBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(bin);
-}
-
-/** Đọc CSV: ưu tiên UTF-8; nếu Excel lưu kiểu "CSV (Comma delimited)" (bảng mã Windows) thì đọc bằng windows-1258. */
-async function readCsvText(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(buf);
-  } catch {
-    return new TextDecoder("windows-1258").decode(buf);
-  }
 }
 
 const btnCls = "inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60";

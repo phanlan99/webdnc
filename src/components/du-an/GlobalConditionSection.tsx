@@ -33,7 +33,7 @@ export default function GlobalConditionSection({ projectCode, conditions, target
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-6">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-800">Điều kiện chung</h2>

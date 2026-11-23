@@ -144,7 +144,10 @@ function cellText(v: ExcelJS.CellValue): string {
 }
 
 /** Đọc file Excel thành bảng chữ (dòng 1 là tiêu đề). Ưu tiên sheet "MaHang", nếu không có thì sheet đầu tiên có cột Loai. */
-export async function readWorkbookRows(data: Buffer): Promise<{ ok: true; rows: string[][]; sheet: string } | { ok: false; message: string }> {
+export async function readWorkbookRows(
+  data: Buffer,
+  preferredSheet: string = DATA_SHEET,
+): Promise<{ ok: true; rows: string[][]; sheet: string } | { ok: false; message: string }> {
   const wb = new ExcelJS.Workbook();
   try {
     await wb.xlsx.load(data as unknown as ArrayBuffer);
@@ -154,8 +157,8 @@ export async function readWorkbookRows(data: Buffer): Promise<{ ok: true; rows: 
 
   const hasLoai = (ws: ExcelJS.Worksheet) =>
     (ws.getRow(1).values as ExcelJS.CellValue[]).some((v) => cellText(v).trim().toLowerCase() === "loai");
-  const ws = wb.getWorksheet(DATA_SHEET) ?? wb.worksheets.find(hasLoai);
-  if (!ws) return { ok: false, message: `File không có sheet "${DATA_SHEET}" (hoặc sheet có cột Loai). Hãy dùng file xuất từ trang này làm mẫu.` };
+  const ws = wb.getWorksheet(preferredSheet) ?? wb.worksheets.find(hasLoai);
+  if (!ws) return { ok: false, message: `File không có sheet "${preferredSheet}" (hoặc sheet có cột Loai). Hãy dùng file xuất từ trang này làm mẫu.` };
 
   const width = Math.max(ws.columnCount, CSV_COLUMNS.length);
   const rows: string[][] = [];
